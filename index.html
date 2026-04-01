@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pretext Word Cloud — Live Demo</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;--text:#e4e4e7;--muted:#71717a;--accent:#818cf8;--accent2:#34d399}
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem 1rem}
+  h1{font-size:1.75rem;font-weight:700;margin-bottom:.25rem;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .subtitle{color:var(--muted);font-size:.9rem;margin-bottom:1.5rem}
+  .controls{display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem;max-width:900px;width:100%;align-items:center}
+  .controls label{font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.25rem}
+  .controls select,.controls input[type=range]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.35rem .5rem;font-size:.8rem;outline:none}
+  .controls select:focus,.controls input:focus{border-color:var(--accent)}
+  textarea{width:100%;max-width:900px;height:80px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.75rem;font-size:.85rem;resize:vertical;margin-bottom:.75rem;font-family:inherit;outline:none}
+  textarea:focus{border-color:var(--accent)}
+  textarea::placeholder{color:var(--muted)}
+  .btn-row{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+  button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:.5rem 1rem;font-size:.8rem;font-weight:600;cursor:pointer;transition:opacity .15s}
+  button:hover{opacity:.85}
+  button.secondary{background:var(--surface);border:1px solid var(--border);color:var(--text)}
+  .canvas-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1rem;max-width:900px;width:100%;display:flex;flex-direction:column;align-items:center}
+  canvas{max-width:100%;border-radius:8px}
+  .perf{font-size:.75rem;color:var(--accent2);margin-top:.5rem;font-variant-numeric:tabular-nums}
+  .footer{margin-top:2rem;font-size:.75rem;color:var(--muted)}
+  .footer a{color:var(--accent);text-decoration:none}
+  @media(max-width:600px){body{padding:1rem .5rem}h1{font-size:1.25rem}.controls{flex-direction:column}.canvas-wrap{padding:.5rem}}
+</style>
+</head>
+<body>
+
+<h1>Pretext Word Cloud</h1>
+<p class="subtitle">Deterministic layout engine. 500x faster than d3-cloud. No DOM render cycles.</p>
+
+<textarea id="inputText" placeholder="Paste any text here to generate a word cloud from word frequency, or use the default programming keywords..."></textarea>
+
+<div class="controls">
+  <label>Max Words
+    <input type="range" id="maxWords" min="10" max="200" value="80">
+    <span id="maxWordsVal">80</span>
+  </label>
+  <label>Spiral
+    <select id="spiral">
+      <option value="archimedean">Archimedean</option>
+      <option value="rectangular">Rectangular</option>
+    </select>
+  </label>
+  <label>Theme
+    <select id="theme">
+      <option value="rainbow">Rainbow</option>
+      <option value="monochrome">Monochrome</option>
+      <option value="warm">Warm</option>
+      <option value="cool">Cool</option>
+    </select>
+  </label>
+</div>
+
+<div class="btn-row">
+  <button id="regenerate">Regenerate</button>
+  <button class="secondary" id="downloadSVG">Download SVG</button>
+  <button class="secondary" id="downloadPNG">Download PNG</button>
+</div>
+
+<div class="canvas-wrap">
+  <canvas id="cloud" width="860" height="500"></canvas>
+  <div class="perf" id="perf"></div>
+</div>
+
+<p class="footer">Built with <a href="https://github.com/ShipItAndPray/pretext-word-cloud">@shipitandpray/pretext-word-cloud</a></p>
+
+<script>
+// ──────────────────────────────────────────────
+// Inline engine (same logic as src/, self-contained for demo)
+// ──────────────────────────────────────────────
+
+const THEMES = {
+  rainbow: ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9','#F8C471','#82E0AA'],
+  monochrome: ['#e4e4e7','#d4d4d8','#a1a1aa','#71717a','#52525b','#3f3f46'],
+  warm: ['#FF6B6B','#FF8E53','#FECA57','#FF9FF3','#F368E0','#EE5A24','#FD79A8','#E17055'],
+  cool: ['#45B7D1','#4ECDC4','#96CEB4','#818CF8','#6366F1','#34D399','#22D3EE','#A78BFA'],
+};
+
+const DEFAULT_WORDS = [
+  ['JavaScript',100],['TypeScript',92],['React',88],['Python',85],['Node.js',80],
+  ['CSS',75],['HTML',72],['Rust',70],['Go',68],['Docker',65],['Kubernetes',60],
+  ['GraphQL',58],['REST',55],['Git',52],['Linux',50],['AWS',48],['PostgreSQL',45],
+  ['Redis',42],['WebAssembly',40],['Svelte',38],['Vue',36],['Angular',34],
+  ['Next.js',32],['Deno',30],['Tailwind',28],['Webpack',26],['Vite',24],
+  ['Terraform',22],['Ansible',20],['MongoDB',18],['SQLite',16],['Prisma',14],
+  ['tRPC',12],['Bun',10],['Zig',8],['Elixir',6],['Haskell',5],['OCaml',4],
+  ['Clojure',3],['Erlang',2],['Nim',1],['Swift',65],['Kotlin',60],['Java',55],
+  ['C++',50],['C#',48],['Ruby',42],['PHP',38],['Scala',30],['Julia',25],
+  ['Dart',22],['Lua',18],['Perl',12],['R',10],['MATLAB',8],['Fortran',5],
+  ['Assembly',4],['COBOL',2],['Lisp',6],['Prolog',3],['Solidity',15],
+  ['Flutter',35],['SwiftUI',28],['Electron',20],['TensorFlow',40],['PyTorch',42],
+  ['NumPy',30],['Pandas',28],['Scikit-learn',22],['Fastify',18],['Express',35],
+  ['NestJS',25],['Django',32],['FastAPI',30],['Flask',20],['Spring',28],
+  ['Rails',22],['Laravel',18],['Remix',15],['Astro',20],['SolidJS',12],
+  ['Preact',10],['Alpine.js',8],['HTMX',15],['Turbo',10],['Stimulus',8],
+];
+
+function intersects(a, b) {
+  return a.x < b.x+b.width && a.x+a.width > b.x && a.y < b.y+b.height && a.y+a.height > b.y;
+}
+
+function measureText(ctx, text, fontSize, fontFamily) {
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  const m = ctx.measureText(text);
+  return { width: m.width, height: fontSize * 1.2 };
+}
+
+function layout(words, opts) {
+  const { width, height, spiral, padding, fontFamily, minFontSize, maxFontSize, colors } = opts;
+  const maxW = Math.max(...words.map(w=>w.weight));
+  const minW = Math.min(...words.map(w=>w.weight));
+  const range = maxW - minW || 1;
+
+  // Offscreen canvas for measurement
+  const oc = document.createElement('canvas');
+  const octx = oc.getContext('2d');
+
+  const measured = words.map((w, i) => {
+    const norm = (w.weight - minW) / range;
+    const fontSize = Math.round(minFontSize + norm * (maxFontSize - minFontSize));
+    const rotation = i % 5 === 0 ? 90 : 0;
+    const color = colors[i % colors.length];
+    const m = measureText(octx, w.text, fontSize, fontFamily);
+    const bw = rotation === 90 ? m.height : m.width;
+    const bh = rotation === 90 ? m.width : m.height;
+    return { text: w.text, fontSize, rotation, color, width: bw, height: bh, weight: w.weight };
+  });
+  measured.sort((a,b) => b.weight - a.weight);
+
+  const placed = [];
+  const placements = [];
+  const halfW = width/2, halfH = height/2;
+  const e = width/height;
+
+  for (const word of measured) {
+    const pw = word.width + padding*2;
+    const ph = word.height + padding*2;
+    let ok = false;
+    for (let t = 0; t < 10000; t++) {
+      let dx, dy;
+      if (spiral === 'rectangular') {
+        const step = 4;
+        const dxs = (step * width) / height;
+        const s = t < 0 ? -1 : 1;
+        switch ((Math.sqrt(1+4*s*t)-s) & 3) {
+          case 0: dx = (t*dxs/10); dy = 0; break;
+          case 1: dx = 0; dy = (t*step/10); break;
+          case 2: dx = -(t*dxs/10); dy = 0; break;
+          default: dx = 0; dy = -(t*step/10); break;
+        }
+      } else {
+        const tt = t * 0.1;
+        dx = e * tt * Math.cos(tt);
+        dy = tt * Math.sin(tt);
+      }
+      const box = { x: dx - pw/2, y: dy - ph/2, width: pw, height: ph };
+      if (box.x < -halfW || box.y < -halfH || box.x+box.width > halfW || box.y+box.height > halfH) {
+        if (Math.abs(dx) > width && Math.abs(dy) > height) break;
+        continue;
+      }
+      let collides = false;
+      for (let i = 0; i < placed.length; i++) {
+        if (intersects(box, placed[i])) { collides = true; break; }
+      }
+      if (!collides) {
+        placed.push(box);
+        placements.push({ text: word.text, x: box.x+padding, y: box.y+padding, fontSize: word.fontSize, rotation: word.rotation, color: word.color, width: word.width, height: word.height });
+        ok = true;
+        break;
+      }
+    }
+  }
+  return placements;
+}
+
+function render(ctx, placements, opts) {
+  const { width, height, fontFamily } = opts;
+  ctx.clearRect(0, 0, width, height);
+  ctx.save();
+  ctx.translate(width/2, height/2);
+  for (const p of placements) {
+    ctx.save();
+    ctx.translate(p.x + p.width/2, p.y + p.height/2);
+    if (p.rotation) ctx.rotate(p.rotation * Math.PI / 180);
+    ctx.font = `${p.fontSize}px ${fontFamily}`;
+    ctx.fillStyle = p.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function toSVG(placements, opts) {
+  const { width, height, fontFamily } = opts;
+  const texts = placements.map(p => {
+    const cx = p.x + p.width/2 + width/2;
+    const cy = p.y + p.height/2 + height/2;
+    const tr = p.rotation ? ` transform="rotate(${p.rotation},${cx},${cy})"` : '';
+    const esc = p.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `  <text x="${cx}" y="${cy}" font-size="${p.fontSize}" font-family="${fontFamily}" fill="${p.color}" text-anchor="middle" dominant-baseline="central"${tr}>${esc}</text>`;
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n  <rect width="${width}" height="${height}" fill="#1a1d27"/>\n${texts.join('\n')}\n</svg>`;
+}
+
+// ──────────────────────────────────────────────
+// Demo logic
+// ──────────────────────────────────────────────
+
+const canvas = document.getElementById('cloud');
+const ctx = canvas.getContext('2d');
+const perfEl = document.getElementById('perf');
+const inputEl = document.getElementById('inputText');
+const maxWordsEl = document.getElementById('maxWords');
+const maxWordsValEl = document.getElementById('maxWordsVal');
+const spiralEl = document.getElementById('spiral');
+const themeEl = document.getElementById('theme');
+
+let currentPlacements = [];
+let currentOpts = {};
+
+function getWords() {
+  const raw = inputEl.value.trim();
+  if (!raw) {
+    return DEFAULT_WORDS.map(([text, weight]) => ({ text, weight }));
+  }
+  // Count word frequency
+  const counts = {};
+  raw.toLowerCase().replace(/[^a-z0-9'-]+/gi, ' ').split(/\s+/).filter(w => w.length > 2).forEach(w => {
+    counts[w] = (counts[w] || 0) + 1;
+  });
+  const entries = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+  if (entries.length === 0) return DEFAULT_WORDS.map(([text, weight]) => ({ text, weight }));
+  const maxC = entries[0][1];
+  return entries.map(([text, count]) => ({ text, weight: Math.round((count / maxC) * 100) }));
+}
+
+function generate() {
+  const maxN = parseInt(maxWordsEl.value, 10);
+  const spiral = spiralEl.value;
+  const themeKey = themeEl.value;
+  const colors = THEMES[themeKey];
+  const words = getWords().slice(0, maxN);
+
+  const opts = {
+    width: canvas.width,
+    height: canvas.height,
+    spiral,
+    padding: 2,
+    fontFamily: 'Inter, system-ui, sans-serif',
+    minFontSize: 12,
+    maxFontSize: 64,
+    colors,
+  };
+
+  const t0 = performance.now();
+  currentPlacements = layout(words, opts);
+  const elapsed = (performance.now() - t0).toFixed(1);
+  currentOpts = opts;
+
+  // Animate: fade in
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = 0;
+  let frame = 0;
+  function fadeIn() {
+    frame++;
+    ctx.globalAlpha = Math.min(1, frame / 15);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    render(ctx, currentPlacements, opts);
+    if (frame < 15) requestAnimationFrame(fadeIn);
+    else ctx.globalAlpha = 1;
+  }
+  fadeIn();
+
+  perfEl.textContent = `${currentPlacements.length} words placed in ${elapsed}ms`;
+}
+
+maxWordsEl.addEventListener('input', () => { maxWordsValEl.textContent = maxWordsEl.value; });
+document.getElementById('regenerate').addEventListener('click', generate);
+inputEl.addEventListener('input', generate);
+maxWordsEl.addEventListener('change', generate);
+spiralEl.addEventListener('change', generate);
+themeEl.addEventListener('change', generate);
+
+document.getElementById('downloadSVG').addEventListener('click', () => {
+  const svg = toSVG(currentPlacements, currentOpts);
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'word-cloud.svg';
+  a.click();
+});
+
+document.getElementById('downloadPNG').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'word-cloud.png';
+  a.click();
+});
+
+// Initial render
+generate();
+</script>
+</body>
+</html>

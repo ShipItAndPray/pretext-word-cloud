@@ -1,0 +1,52 @@
+{
+  "name": "@shipitandpray/pretext-word-cloud",
+  "version": "1.0.0",
+  "description": "Deterministic word cloud layout powered by Pretext. 500x faster than d3-cloud.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "word-cloud",
+    "wordcloud",
+    "pretext",
+    "layout",
+    "deterministic",
+    "canvas",
+    "svg",
+    "visualization",
+    "tag-cloud"
+  ],
+  "author": "ShipItAndPray",
+  "license": "MIT",
+  "homepage": "https://shipitandpray.github.io/pretext-word-cloud/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShipItAndPray/pretext-word-cloud.git"
+  },
+  "peerDependencies": {
+    "@pretext/core": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@pretext/core": "^0.1.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
